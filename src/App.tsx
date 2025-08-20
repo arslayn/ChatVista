@@ -10,7 +10,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: "Hello! I'm your AI assistant. Feel free to ask me anything!",
+      content: "Hello! I'm Arslan's AI assistant. Feel free to ask me anything related to Python!",
       sender: 'bot',
       timestamp: new Date(),
     }
