@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "lint": "your-lint-command",
+    "preview": "vite preview",
+    "test": "your-test-command",
+    "format:check": "your-format-check-command"
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
