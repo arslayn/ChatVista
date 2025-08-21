@@ -1,0 +1,232 @@
+# .github/workflows/deploy-vercel.yml
+name: Deploy Chatbot to Vercel
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Run tests
+      run: npm test
+      continue-on-error: false
+      
+    - name: Run ESLint
+      run: npm run lint
+      continue-on-error: false
+      
+    - name: Check code formatting
+      run: npm run format:check
+      continue-on-error: true  # Don't fail for formatting issues
+
+  version:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    outputs:
+      new_tag: ${{ steps.tag_version.outputs.new_tag }}
+      new_version: ${{ steps.tag_version.outputs.new_version }}
+      changelog: ${{ steps.tag_version.outputs.changelog }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Bump version and push tag
+      id: tag_version
+      uses: mathieudutour/github-tag-action@v6.1
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        default_bump: patch
+        tag_prefix: v
+        release_branches: main
+
+  # Deploy to Vercel Preview (for develop branch and PRs)
+  deploy-preview:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to Vercel Preview
+      uses: amondnet/vercel-action@v25
+      id: vercel-preview
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        github-comment: true
+        working-directory: ./
+        
+    - name: Preview URL Comment
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: '🚀 **Preview Deployment Ready!**\n\n📱 Chatbot Preview: ${{ steps.vercel-preview.outputs.preview-url }}\n\n*Deployed from commit: ${{ github.sha }}*'
+          });
+
+  # Deploy to Vercel Production (for main branch)
+  deploy-production:
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to Vercel Production
+      uses: amondnet/vercel-action@v25
+      id: vercel-production
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'
+        github-comment: false
+        working-directory: ./
+
+  # Performance audit after production deployment
+  lighthouse:
+    needs: deploy-production
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Wait for deployment to be ready
+      run: sleep 30
+      
+    - name: Run Lighthouse CI
+      uses: treosh/lighthouse-ci-action@v10
+      with:
+        urls: |
+          ${{ secrets.PRODUCTION_URL }}
+        configPath: './lighthouserc.json'
+        uploadArtifacts: true
+        temporaryPublicStorage: true
+      continue-on-error: true
+
+  # Security audit
+  security-audit:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Run security audit
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+
+  # Notify team about deployment
+  notify:
+    needs: [version, deploy-production, lighthouse]
+    runs-on: ubuntu-latest
+    if: always() && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Get deployment status
+      id: deployment-status
+      run: |
+        if [ "${{ needs.deploy-production.result }}" == "success" ]; then
+          echo "status=✅ Success" >> $GITHUB_OUTPUT
+          echo "emoji=🚀" >> $GITHUB_OUTPUT
+          echo "color=65280" >> $GITHUB_OUTPUT
+        else
+          echo "status=❌ Failed" >> $GITHUB_OUTPUT
+          echo "emoji=💥" >> $GITHUB_OUTPUT
+          echo "color=16711680" >> $GITHUB_OUTPUT
+        fi
+        
+    # Discord Notification
+    - name: Discord Notification
+      uses: sarisia/actions-status-discord@v1
+      with:
+        webhook: ${{ secrets.DISCORD_WEBHOOK }}
+        title: "🤖 Chatbot Deployment"
+        description: |
+          **Status:** ${{ steps.deployment-status.outputs.status }}
+          **Version:** ${{ needs.version.outputs.new_version || 'N/A' }}
+          **Environment:** Production
+          **Repository:** ${{ github.repository }}
+          **Commit:** ${{ github.event.head_commit.message }}
+        url: ${{ secrets.PRODUCTION_URL }}
+        color: ${{ steps.deployment-status.outputs.color }}
+        username: "GitHub Actions Bot"
+        avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+      if: secrets.DISCORD_WEBHOOK != ''
+
+  # Create GitHub Release
+  create-release:
+    needs: [version, deploy-production]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && needs.deploy-production.result == 'success'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.version.outputs.new_tag }}
+        name: Release ${{ needs.version.outputs.new_version }}
+        body: |
+          ## 🤖 Chatbot Release ${{ needs.version.outputs.new_version }}
+          
+          **Deployed to:** ${{ secrets.PRODUCTION_URL }}
+          
+          ### Changes
+          ${{ needs.version.outputs.changelog }}
+          
+          ### Deployment Info
+          - **Platform:** Vercel
+          - **Environment:** Production
+          - **Commit:** ${{ github.sha }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
