@@ -198,6 +198,7 @@ jobs:
         username: "GitHub Actions Bot"
         avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
       if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+#This should Run now!
 
   # Create GitHub Release
   create-release:
