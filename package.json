@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "your-lint-command",
     "preview": "vite preview",
-    "test": "npm test",
+    "test": "vitest",
     "format:check": "your-format-check-command"
   },
   "dependencies": {
