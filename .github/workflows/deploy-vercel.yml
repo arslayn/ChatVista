@@ -161,45 +161,6 @@ jobs:
       run: npm audit --audit-level=moderate
       continue-on-error: true
 
-  # Notify team about deployment
-  notify:
-    needs: [version, deploy-production, lighthouse]
-    runs-on: ubuntu-latest
-    if: always() && github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Get deployment status
-      id: deployment-status
-      run: |
-        if [ "${{ needs.deploy-production.result }}" == "success" ]; then
-          echo "status=✅ Success" >> $GITHUB_OUTPUT
-          echo "emoji=🚀" >> $GITHUB_OUTPUT
-          echo "color=65280" >> $GITHUB_OUTPUT
-        else
-          echo "status=❌ Failed" >> $GITHUB_OUTPUT
-          echo "emoji=💥" >> $GITHUB_OUTPUT
-          echo "color=16711680" >> $GITHUB_OUTPUT
-        fi
-        
-    # Discord Notification
-    - name: Discord Notification
-      uses: sarisia/actions-status-discord@v1
-      with:
-        webhook: ${{ secrets.DISCORD_WEBHOOK }}
-        title: "🤖 Chatbot Deployment"
-        description: |
-          **Status:** ${{ steps.deployment-status.outputs.status }}
-          **Version:** ${{ needs.version.outputs.new_version || 'N/A' }}
-          **Environment:** Production
-          **Repository:** ${{ github.repository }}
-          **Commit:** ${{ github.event.head_commit.message }}
-        url: ${{ secrets.PRODUCTION_URL }}
-        color: ${{ steps.deployment-status.outputs.color }}
-        username: "GitHub Actions Bot"
-        avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-      if: ${{ secrets.DISCORD_WEBHOOK != '' }}
-#This should Run now!
-
   # Create GitHub Release
   create-release:
     needs: [version, deploy-production]
