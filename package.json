@@ -9,7 +9,8 @@
     "lint": "echo \"No linting configured\" && exit 0",
     "preview": "vite preview",
     "test": "vitest",
-    "format:check": "your-format-check-command"
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
@@ -34,6 +35,7 @@
     "eslint-plugin-react-refresh": "^0.4.11",
     "globals": "^15.9.0",
     "postcss": "^8.4.35",
+    "prettier": "^3.6.2",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
