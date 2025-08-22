@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "your-lint-command",
+    "lint": "echo \"No linting configured\" && exit 0",
     "preview": "vite preview",
     "test": "vitest",
     "format:check": "your-format-check-command"
