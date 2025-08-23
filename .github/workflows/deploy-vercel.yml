@@ -1,5 +1,8 @@
 name: Deploy Chatbot to Vercel
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main, develop ]
@@ -12,54 +15,51 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        
+
     - name: Install dependencies
       run: npm install
-      
+
     - name: Run tests
       run: npm test
       continue-on-error: false
-      
+
     - name: Run ESLint
       run: npm run lint
       continue-on-error: false
-      
+
     - name: Check code formatting
       run: npm run format:check
       continue-on-error: true  # Don't fail for formatting issues
-
-    - name: Format code with Prettier
-      run: npx prettier --write .
 
   version:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    
+
     outputs:
       new_tag: ${{ steps.tag_version.outputs.new_tag }}
       new_version: ${{ steps.tag_version.outputs.new_version }}
       changelog: ${{ steps.tag_version.outputs.changelog }}
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Bump version and push tag
       id: tag_version
       uses: mathieudutour/github-tag-action@v6.1
       with:
-        github_token: ${{ secrets.GH_PAT }}
+        github_token: ${{ secrets.GITHUB_TOKEN }}
         default_bump: patch
         tag_prefix: v
         release_branches: main
@@ -69,11 +69,11 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/main'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Deploy to Vercel Preview
       uses: amondnet/vercel-action@v25
       id: vercel-preview
@@ -83,7 +83,7 @@ jobs:
         vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
         github-comment: true
         working-directory: ./
-        
+
     - name: Preview URL Comment
       uses: actions/github-script@v7
       if: github.event_name == 'pull_request'
@@ -102,11 +102,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment: production
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Deploy to Vercel Production
       uses: amondnet/vercel-action@v25
       id: vercel-production
@@ -123,14 +123,14 @@ jobs:
     needs: deploy-production
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Wait for deployment to be ready
       run: sleep 30
-      
+
     - name: Run Lighthouse CI
       uses: treosh/lighthouse-ci-action@v10
       with:
@@ -145,20 +145,20 @@ jobs:
   security-audit:
     needs: test
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
         cache: 'npm'
-        
+
     - name: Install dependencies
       run: npm install
-      
+
     - name: Run security audit
       run: npm audit --audit-level=moderate
       continue-on-error: true
@@ -168,11 +168,11 @@ jobs:
     needs: [version, deploy-production]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && needs.deploy-production.result == 'success'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
@@ -180,12 +180,12 @@ jobs:
         name: Release ${{ needs.version.outputs.new_version }}
         body: |
           ## 🤖 Chatbot Release ${{ needs.version.outputs.new_version }}
-          
+
           **Deployed to:** ${{ secrets.PRODUCTION_URL }}
-          
+
           ### Changes
           ${{ needs.version.outputs.changelog }}
-          
+
           ### Deployment Info
           - **Platform:** Vercel
           - **Environment:** Production
@@ -194,4 +194,3 @@ jobs:
         prerelease: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
